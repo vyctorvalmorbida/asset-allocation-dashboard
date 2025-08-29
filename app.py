@@ -31,18 +31,19 @@ CRISIS_WINDOWS = {
     "Bear_Inf_2022": ("2022-01-03", "2022-10-12"),
 }
 
+# ===== NOVOS NOMES DAS CARTEIRAS =====
 ALLOCATIONS = {
-    "Defensiva":       {"Fixed Income": 1.00, "Equity": 0.00, "Alternatives": 0.00},
-    "Conservadora Nível 1":  {"Fixed Income": 0.90, "Equity": 0.08, "Alternatives": 0.02},
-    "Conservadora Nível 2":  {"Fixed Income": 0.80, "Equity": 0.16, "Alternatives": 0.04},
-    "Conservadora Nível 3":  {"Fixed Income": 0.70, "Equity": 0.24, "Alternatives": 0.06},
-    "Moderada Nível 1":      {"Fixed Income": 0.60, "Equity": 0.32, "Alternatives": 0.08},
-    "Moderada Nível 2":      {"Fixed Income": 0.50, "Equity": 0.40, "Alternatives": 0.10},
-    "Moderada Nível 3":      {"Fixed Income": 0.40, "Equity": 0.48, "Alternatives": 0.12},
-    "Arrojada Nível 1":      {"Fixed Income": 0.30, "Equity": 0.56, "Alternatives": 0.14},
-    "Arrojada Nível 2":      {"Fixed Income": 0.20, "Equity": 0.64, "Alternatives": 0.16},
-    "Arrojada Nível 3":      {"Fixed Income": 0.10, "Equity": 0.72, "Alternatives": 0.18},
-    "Crescimento":     {"Fixed Income": 0.00, "Equity": 0.80, "Alternatives": 0.20},
+    "Defensiva":              {"Fixed Income": 1.00, "Equity": 0.00, "Alternatives": 0.00},
+    "Conservadora Nível 1":   {"Fixed Income": 0.90, "Equity": 0.08, "Alternatives": 0.02},
+    "Conservadora Nível 2":   {"Fixed Income": 0.80, "Equity": 0.16, "Alternatives": 0.04},
+    "Conservadora Nível 3":   {"Fixed Income": 0.70, "Equity": 0.24, "Alternatives": 0.06},
+    "Moderada Nível 1":       {"Fixed Income": 0.60, "Equity": 0.32, "Alternatives": 0.08},
+    "Moderada Nível 2":       {"Fixed Income": 0.50, "Equity": 0.40, "Alternatives": 0.10},
+    "Moderada Nível 3":       {"Fixed Income": 0.40, "Equity": 0.48, "Alternatives": 0.12},
+    "Arrojada Nível 1":       {"Fixed Income": 0.30, "Equity": 0.56, "Alternatives": 0.14},
+    "Arrojada Nível 2":       {"Fixed Income": 0.20, "Equity": 0.64, "Alternatives": 0.16},
+    "Arrojada Nível 3":       {"Fixed Income": 0.10, "Equity": 0.72, "Alternatives": 0.18},
+    "Crescimento":            {"Fixed Income": 0.00, "Equity": 0.80, "Alternatives": 0.20},
 }
 
 # =========================
@@ -410,7 +411,11 @@ c1,c2 = st.columns([2,1])
 with c1:
     st.dataframe(show_alloc, use_container_width=True)
 with c2:
-    pick = st.selectbox("Carteira para visualizar a composição:", list(ALLOCATIONS.keys()), index=list(ALLOCATIONS.keys()).index("Moderada_2"))
+    pick = st.selectbox(
+        "Carteira para visualizar a composição:",
+        list(ALLOCATIONS.keys()),
+        index=list(ALLOCATIONS.keys()).index("Moderada Nível 2")
+    )
     st.plotly_chart(fig_weights_pie(ALLOCATIONS[pick], pick), use_container_width=True)
 st.plotly_chart(fig_weights_bars(allocs_df), use_container_width=True)
 st.info("Rebalanceamento periódico (M/Q/A) para voltar aos pesos-alvo. Proxies: "
@@ -456,7 +461,7 @@ st.markdown("### KPIs por janela")
 sel_port = st.multiselect(
     "Selecione carteiras para comparar KPIs:",
     list(port_rets.keys()),
-    default=["Moderada_2", "Crescimento"],
+    default=["Moderada Nível 2", "Crescimento"],
 )
 
 view_mode = st.radio(
@@ -519,7 +524,7 @@ cc1, cc2 = st.columns(2)
 with cc1:
     st.plotly_chart(fig_heatmap(classes.corr(min_periods=12), "Correlação — Classes de Ativos"), use_container_width=True)
 with cc2:
-    subset = ["Defensiva","Conservadora_3","Moderada_2","Moderada_3","Arrojada_3","Crescimento"]
+    subset = ["Defensiva","Conservadora Nível 3","Moderada Nível 2","Moderada Nível 3","Arrojada Nível 3","Crescimento"]
     dfp = pd.DataFrame({k:v for k,v in port_rets.items() if k in subset})
     st.plotly_chart(fig_heatmap(dfp.corr(min_periods=12), "Correlação — Carteiras Selecionadas"), use_container_width=True)
 
@@ -544,8 +549,8 @@ with r2: st.plotly_chart(fig_rolling(sel_roll, 36, "sharpe"), use_container_widt
 st.markdown("### Distribuição de retornos mensais")
 d1,d2 = st.columns(2)
 with d1:
-    st.plotly_chart(px.histogram(port_rets["Moderada_2"].dropna(), nbins=40, template=PLOTLY_TEMPLATE,
-                                 title="Moderada_2").update_xaxes(tickformat=".1%"), use_container_width=True)
+    st.plotly_chart(px.histogram(port_rets["Moderada Nível 2"].dropna(), nbins=40, template=PLOTLY_TEMPLATE,
+                                 title="Moderada Nível 2").update_xaxes(tickformat=".1%"), use_container_width=True)
 with d2:
     st.plotly_chart(px.histogram(port_rets["Crescimento"].dropna(), nbins=40, template=PLOTLY_TEMPLATE,
                                  title="Crescimento").update_xaxes(tickformat=".1%"), use_container_width=True)
