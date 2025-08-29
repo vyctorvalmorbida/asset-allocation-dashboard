@@ -247,22 +247,45 @@ def run_backtest(start_date: str, rebalance: str, rf_mode: str):
         results[wname]=pd.DataFrame(rows).T.sort_index()
 
     # Crises (corrigido MaxDD p/ janelas de 1 mês)
-    crisis_tables={}
-    for cname,(cs,ce) in CRISIS_WINDOWS.items():
-        cs,ce = pd.to_datetime(cs), pd.to_datetime(ce)
-        rows={}
-        for name,r in port_rets.items():
-            sub = r.loc[(r.index>=cs)&(r.index<=ce)].dropna()
-            if len(sub)==0: continue
-            cum = float((1+sub).prod()-1)
-            if len(sub)==1:
+        # Crises (corrigido MaxDD p/ janelas de 1 mês)
+    crisis_tables = {}
+    data_start = classes.index.min()
+    data_end   = classes.index.max()
+
+    for cname, (cs, ce) in CRISIS_WINDOWS.items():
+        cs, ce = pd.to_datetime(cs), pd.to_datetime(ce)
+
+        # Verifica sobreposição com a amostra disponível
+        ov_start = max(cs, data_start)
+        ov_end   = min(ce, data_end)
+        if ov_start > ov_end:
+            continue  # sem interseção; pula
+
+        rows = {}
+        for name, r in port_rets.items():
+            sub = r.loc[(r.index >= ov_start) & (r.index <= ov_end)].dropna()
+            if len(sub) == 0:
+                continue
+
+            cum = float((1 + sub).prod() - 1)
+            if len(sub) == 1:
                 wm = float(sub.iloc[0])
-                mdd = wm if wm<0 else 0.0   # << fix: evita branco/NaN e reflete o pior mês
+                mdd = wm if wm < 0 else 0.0
             else:
                 mdd = max_dd_value(sub)
-            rows[name]={"Cumulative":cum,"MaxDD":float(mdd),"WorstMonth":float(sub.min()),"Obs":int(len(sub))}
-        crisis_tables[cname]=pd.DataFrame(rows).T.sort_values("Cumulative")
-    return classes, port_rets, results, windows, rf, crisis_tables
+
+            rows[name] = {
+                "Cumulative": cum,
+                "MaxDD": float(mdd),
+                "WorstMonth": float(sub.min()),
+                "Obs": int(len(sub)),
+            }
+
+        if not rows:
+            continue  # nenhuma carteira com dados nesta crise
+
+        cdf = pd.DataFrame(rows).T
+        crisis_tables[cname] = cdf.sort_values("Cumulative") if "Cumulative" in cdf.columns else cdf
 
 # =========================
 # GRÁFICOS
