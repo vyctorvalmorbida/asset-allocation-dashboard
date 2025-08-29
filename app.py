@@ -223,7 +223,10 @@ def calc_metrics(m: pd.Series, rf_m: Optional[pd.Series]) -> Dict[str,float]:
 @st.cache_data(show_spinner=True)
 def run_backtest(start_date: str, rebalance: str, rf_mode: str):
     classes = build_class_returns(start_date, None)
+    if classes.empty:
+        return pd.DataFrame(), {}, {}, {}, pd.Series(dtype=float), {}
     last = classes.index.max()
+
     rf = get_risk_free_monthly(classes.index.min().strftime("%Y-%m-%d"),
                                classes.index.max().strftime("%Y-%m-%d"),
                                rf_mode)
@@ -380,7 +383,8 @@ st.sidebar.caption("Proxies: FI=AGG | Equity=SPY | Alternativos= média de GLD/V
 # =========================
 # EXECUÇÃO
 # =========================
-classes, port_rets, results, windows, rf, crises = run_backtest(start_date.strftime("%Y-%m-%d"), rebalance, rf_mode)
+if classes.empty:
+    return pd.DataFrame(), {}, {}, {}, pd.Series(dtype=float), {}
 
 st.title("Asset Allocation — Dashboard")
 st.caption("Simulador histórico de carteiras por classe de ativos (wealth management).")
