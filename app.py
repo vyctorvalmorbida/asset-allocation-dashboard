@@ -2,7 +2,7 @@
 # deps: streamlit pandas numpy yfinance plotly xlsxwriter openpyxl
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, List, Tuple, Optional
 import io
 
@@ -33,15 +33,15 @@ CRISIS_WINDOWS = {
 
 ALLOCATIONS = {
     "Defensiva":       {"Fixed Income": 1.00, "Equity": 0.00, "Alternatives": 0.00},
-    "Conservadora_1":  {"Fixed Income": 0.90, "Equity": 0.08, "Alternatives": 0.02},
-    "Conservadora_2":  {"Fixed Income": 0.80, "Equity": 0.16, "Alternatives": 0.04},
-    "Conservadora_3":  {"Fixed Income": 0.70, "Equity": 0.24, "Alternatives": 0.06},
-    "Moderada_1":      {"Fixed Income": 0.60, "Equity": 0.32, "Alternatives": 0.08},
-    "Moderada_2":      {"Fixed Income": 0.50, "Equity": 0.40, "Alternatives": 0.10},
-    "Moderada_3":      {"Fixed Income": 0.40, "Equity": 0.48, "Alternatives": 0.12},
-    "Arrojada_1":      {"Fixed Income": 0.30, "Equity": 0.56, "Alternatives": 0.14},
-    "Arrojada_2":      {"Fixed Income": 0.20, "Equity": 0.64, "Alternatives": 0.16},
-    "Arrojada_3":      {"Fixed Income": 0.10, "Equity": 0.72, "Alternatives": 0.18},
+    "Conservadora Nível 1":  {"Fixed Income": 0.90, "Equity": 0.08, "Alternatives": 0.02},
+    "Conservadora Nível 2":  {"Fixed Income": 0.80, "Equity": 0.16, "Alternatives": 0.04},
+    "Conservadora Nível 3":  {"Fixed Income": 0.70, "Equity": 0.24, "Alternatives": 0.06},
+    "Moderada Nível 1":      {"Fixed Income": 0.60, "Equity": 0.32, "Alternatives": 0.08},
+    "Moderada Nível 2":      {"Fixed Income": 0.50, "Equity": 0.40, "Alternatives": 0.10},
+    "Moderada Nível 3":      {"Fixed Income": 0.40, "Equity": 0.48, "Alternatives": 0.12},
+    "Arrojada Nível 1":      {"Fixed Income": 0.30, "Equity": 0.56, "Alternatives": 0.14},
+    "Arrojada Nível 2":      {"Fixed Income": 0.20, "Equity": 0.64, "Alternatives": 0.16},
+    "Arrojada Nível 3":      {"Fixed Income": 0.10, "Equity": 0.72, "Alternatives": 0.18},
     "Crescimento":     {"Fixed Income": 0.00, "Equity": 0.80, "Alternatives": 0.20},
 }
 
@@ -132,7 +132,7 @@ def get_risk_free_monthly(start: str, end: Optional[str], mode: str) -> pd.Serie
     # === IRX (default) ===
     try:
         data = yf.download("^IRX", start=start, end=end, auto_adjust=False, progress=False)
-        # pega a coluna 'Adj Close' se existir; senão tenta 'Close' ou a 1ª coluna
+
         irx = None
         for col in ["Adj Close", "Close"]:
             if col in data.columns:
@@ -147,16 +147,18 @@ def get_risk_free_monthly(start: str, end: Optional[str], mode: str) -> pd.Serie
         if irx is None or irx.dropna().empty:
             return pd.Series(dtype=float, name="RF")
 
-        # garante Series
         if isinstance(irx, pd.DataFrame):
             irx = irx.iloc[:, 0]
         irx = pd.to_numeric(irx, errors="coerce").dropna()
+
+        # Garante DateTimeIndex para resample
+        if not isinstance(irx.index, pd.DatetimeIndex):
+            irx.index = pd.to_datetime(irx.index)
 
         # anual (%) -> mensal (retorno)
         irx_m = irx.resample("ME").last() / 100.0
         rf_m = (1.0 + irx_m) ** (1.0 / 12.0) - 1.0
 
-        # garante Series 1-d
         if isinstance(rf_m, pd.DataFrame):
             rf_m = rf_m.iloc[:, 0]
         rf_m = pd.Series(rf_m.values, index=rf_m.index, name="RF")
@@ -246,46 +248,36 @@ def run_backtest(start_date: str, rebalance: str, rf_mode: str):
             if len(sub)>=24: rows[name]=calc_metrics(sub, rf)
         results[wname]=pd.DataFrame(rows).T.sort_index()
 
-    # Crises (corrigido MaxDD p/ janelas de 1 mês)
-        # Crises (corrigido MaxDD p/ janelas de 1 mês)
+    # Crises (robusto a janelas sem interseção)
     crisis_tables = {}
     data_start = classes.index.min()
     data_end   = classes.index.max()
 
-    for cname, (cs, ce) in CRISIS_WINDOWS.items():
+    for cname,(cs,ce) in CRISIS_WINDOWS.items():
         cs, ce = pd.to_datetime(cs), pd.to_datetime(ce)
-
-        # Verifica sobreposição com a amostra disponível
         ov_start = max(cs, data_start)
         ov_end   = min(ce, data_end)
         if ov_start > ov_end:
-            continue  # sem interseção; pula
+            continue  # sem interseção com a amostra atual
 
-        rows = {}
-        for name, r in port_rets.items():
-            sub = r.loc[(r.index >= ov_start) & (r.index <= ov_end)].dropna()
-            if len(sub) == 0:
+        rows={}
+        for name,r in port_rets.items():
+            sub = r.loc[(r.index>=ov_start)&(r.index<=ov_end)].dropna()
+            if len(sub)==0:
                 continue
-
-            cum = float((1 + sub).prod() - 1)
-            if len(sub) == 1:
+            cum = float((1+sub).prod()-1)
+            if len(sub)==1:
                 wm = float(sub.iloc[0])
-                mdd = wm if wm < 0 else 0.0
+                mdd = wm if wm<0 else 0.0
             else:
                 mdd = max_dd_value(sub)
-
-            rows[name] = {
-                "Cumulative": cum,
-                "MaxDD": float(mdd),
-                "WorstMonth": float(sub.min()),
-                "Obs": int(len(sub)),
-            }
-
+            rows[name]={"Cumulative":cum,"MaxDD":float(mdd),"WorstMonth":float(sub.min()),"Obs":int(len(sub))}
         if not rows:
-            continue  # nenhuma carteira com dados nesta crise
-
+            continue
         cdf = pd.DataFrame(rows).T
         crisis_tables[cname] = cdf.sort_values("Cumulative") if "Cumulative" in cdf.columns else cdf
+
+    return classes, port_rets, results, windows, rf, crisis_tables
 
 # =========================
 # GRÁFICOS
@@ -357,11 +349,15 @@ def build_excel(results, crises, classes, port_rets, windows) -> bytes:
                 years = int(wname.split()[1].replace("Y",""))
                 df2["Cumulative"] = (1 + df2["CAGR"])**years - 1
             df2.to_excel(writer, sheet_name=f"Metrics_{wname.replace(' ','_')}")
+        # Crises
         if crises:
             concat=[]
             for cname,cdf in crises.items():
+                if cdf is None or cdf.empty:
+                    continue
                 t = cdf.copy(); t.insert(0,"Crisis",cname); concat.append(t)
-            pd.concat(concat).to_excel(writer, sheet_name="Crises")
+            if concat:
+                pd.concat(concat).to_excel(writer, sheet_name="Crises")
         pd.DataFrame(port_rets).corr(min_periods=12).to_excel(writer, sheet_name="Corr_Portfolios")
         classes.corr(min_periods=12).to_excel(writer, sheet_name="Corr_Classes")
         pd.DataFrame(ALLOCATIONS).T.to_excel(writer, sheet_name="Inputs_Allocations")
@@ -377,7 +373,20 @@ def build_excel(results, crises, classes, port_rets, windows) -> bytes:
 # UI — SIDEBAR
 # =========================
 st.sidebar.header("⚙️ Parâmetros")
-start_date = st.sidebar.date_input("Data inicial", value=pd.to_datetime(DEFAULT_START_DATE))
+
+raw_sd = st.sidebar.date_input(
+    "Data inicial",
+    value=pd.to_datetime(DEFAULT_START_DATE).date(),  # date puro evita edge cases
+    key="sd_single",
+)
+
+# Se o usuário selecionar um range por engano, pega o primeiro
+if isinstance(raw_sd, (list, tuple)):
+    raw_sd = raw_sd[0]
+
+# Converte para Timestamp de forma defensiva
+start_date = pd.to_datetime(raw_sd)
+
 rebalance = st.sidebar.selectbox("Rebalanceamento", ["M","Q","A"], index=["M","Q","A"].index(DEFAULT_REBALANCE))
 rf_mode   = st.sidebar.selectbox("Risco livre (Sharpe/Sortino)", ["IRX","BIL","ZERO"], index=["IRX","BIL","ZERO"].index(DEFAULT_RF_MODE))
 st.sidebar.markdown("---")
@@ -386,7 +395,7 @@ st.sidebar.caption("Proxies: FI=AGG | Equity=SPY | Alternativos= média de GLD/V
 # =========================
 # EXECUÇÃO
 # =========================
-classes, port_rets, results, windows, rf, crises = run_backtest(start_date.strftime("%Y-%m-%d"), rebalance, rf_mode)
+classes, port_rets, results, windows, rf, crises = run_backtest(start_date.date().isoformat(), rebalance, rf_mode)
 
 st.title("Asset Allocation — Dashboard")
 st.caption("Simulador histórico de carteiras por classe de ativos (wealth management).")
@@ -425,12 +434,17 @@ with c4:
 st.plotly_chart(fig_drawdown_overlay(port_rets, title="Drawdown — Amostra Completa"), use_container_width=True)
 
 st.subheader("Crises históricas (impacto por carteira)")
-for cname, cdf in crises.items():
-    show = cdf.copy()
-    for c in ["Cumulative","MaxDD","WorstMonth"]:
-        show[c] = (show[c]*100).map(lambda x: f"{x:.2f}%")
-    st.markdown(f"**{cname}**")
-    st.dataframe(show, use_container_width=True)
+if crises:
+    for cname, cdf in crises.items():
+        if cdf is None or cdf.empty:
+            continue
+        show = cdf.copy()
+        for c in ["Cumulative","MaxDD","WorstMonth"]:
+            show[c] = (show[c]*100).map(lambda x: f"{x:.2f}%")
+        st.markdown(f"**{cname}**")
+        st.dataframe(show, use_container_width=True)
+else:
+    st.caption("Nenhuma crise relevante no recorte selecionado.")
 
 # =========================
 # SEÇÃO: TÉCNICA (KPIs, correlação, rolling, histogramas)
@@ -456,10 +470,8 @@ def _format_kpis(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if out.empty:
         return out
-    # ordem fixa de colunas
     cols = ["CAGR", "Vol", "Sharpe", "Sortino", "MaxDD", "Calmar"]
     out = out.reindex(columns=cols)
-    # formatação
     for c in ["CAGR", "Vol", "MaxDD"]:
         if c in out:
             out[c] = (out[c] * 100).map(lambda x: f"{x:.2f}%")
@@ -471,13 +483,10 @@ def _format_kpis(df: pd.DataFrame) -> pd.DataFrame:
 for wname, df in results.items():
     if df.empty:
         continue
-
     sub = df.loc[df.index.intersection(sel_port)].copy()
     if sub.empty:
         continue
-
     st.markdown(f"**{wname}**")
-
     if view_mode == "Tabela comparativa":
         st.dataframe(
             _format_kpis(sub),
@@ -485,7 +494,6 @@ for wname, df in results.items():
             height=(len(sub) + 1) * 35 + 30,
         )
     else:
-        # === Cards em grade 3 por linha ===
         ports = list(sub.index)
         n = len(ports)
         cols_per_row = 3
