@@ -247,22 +247,39 @@ def run_backtest(start_date: str, rebalance: str, rf_mode: str):
         results[wname]=pd.DataFrame(rows).T.sort_index()
 
     # Crises (corrigido MaxDD p/ janelas de 1 mês)
-    crisis_tables={}
-    for cname,(cs,ce) in CRISIS_WINDOWS.items():
-        cs,ce = pd.to_datetime(cs), pd.to_datetime(ce)
-        rows={}
-        for name,r in port_rets.items():
-            sub = r.loc[(r.index>=cs)&(r.index<=ce)].dropna()
-            if len(sub)==0: continue
-            cum = float((1+sub).prod()-1)
-            if len(sub)==1:
+    # Crises (robusto a janelas sem dados)
+    crisis_tables = {}
+    expected_cols = ["Cumulative", "MaxDD", "WorstMonth", "Obs"]
+
+    for cname, (cs, ce) in CRISIS_WINDOWS.items():
+        cs, ce = pd.to_datetime(cs), pd.to_datetime(ce)
+        rows = {}
+        for name, r in port_rets.items():
+            sub = r.loc[(r.index >= cs) & (r.index <= ce)].dropna()
+            if len(sub) == 0:
+                continue
+
+            cum = float((1 + sub).prod() - 1)
+
+            # janela de 1 mês: usa o próprio retorno como "drawdown" (se negativo) para evitar NaN/KeyError
+            if len(sub) == 1:
                 wm = float(sub.iloc[0])
-                mdd = wm if wm<0 else 0.0   # << fix: evita branco/NaN e reflete o pior mês
+                mdd = wm if wm < 0 else 0.0
             else:
                 mdd = max_dd_value(sub)
-            rows[name]={"Cumulative":cum,"MaxDD":float(mdd),"WorstMonth":float(sub.min()),"Obs":int(len(sub))}
-        crisis_tables[cname]=pd.DataFrame(rows).T.sort_values("Cumulative")
-    return classes, port_rets, results, windows, rf, crisis_tables
+
+            rows[name] = {
+                "Cumulative": cum,
+                "MaxDD": float(mdd),
+                "WorstMonth": float(sub.min()),
+                "Obs": int(len(sub)),
+            }
+
+        if rows:
+            crisis_tables[cname] = pd.DataFrame(rows).T.sort_values("Cumulative")
+        else:
+            # mantém estrutura de colunas para não quebrar o front-end
+            crisis_tables[cname] = pd.DataFrame(columns=expected_cols)
 
 # =========================
 # GRÁFICOS
@@ -403,10 +420,13 @@ st.plotly_chart(fig_drawdown_overlay(port_rets, title="Drawdown — Amostra Comp
 
 st.subheader("Crises históricas (impacto por carteira)")
 for cname, cdf in crises.items():
-    show = cdf.copy()
-    for c in ["Cumulative","MaxDD","WorstMonth"]:
-        show[c] = (show[c]*100).map(lambda x: f"{x:.2f}%")
     st.markdown(f"**{cname}**")
+    if cdf.empty:
+        st.info("Sem dados para esta crise com a data inicial selecionada.")
+        continue
+    show = cdf.copy()
+    for c in ["Cumulative", "MaxDD", "WorstMonth"]:
+        show[c] = (show[c] * 100).map(lambda x: f"{x:.2f}%")
     st.dataframe(show, use_container_width=True)
 
 # =========================
